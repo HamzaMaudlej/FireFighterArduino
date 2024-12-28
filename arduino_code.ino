@@ -40,7 +40,7 @@ const int kServoWaterPin = 12;
 const int kServoUltrasonicLeftDegree = 170;
 const int kServoUltrasonicForwardDegree = 69;
 const int kServoUltrasonicRightDegree = 0;
-const int kServoWaterLeftDegree = 150;
+const int kServoWaterLeftDegree = 130;
 const int kServoWaterForwardDegree = 78;
 const int kServoWaterRightDegree = 30;
 Servo ServoUltrasonic;
@@ -62,8 +62,13 @@ const String kCmdLeft = "L";
 const String kCmdRight = "R";
 const String kCmdBack = "B";
 char data_from_bluetooth;
+String current_cmd_data = "";
 String cmd_data = "";
 SoftwareSerial HM10(kRxPin, kTxPin);
+
+/*water pump*/
+const int relayPin=10;
+
 
 void setup() {
   Serial.begin(kBaudRate);
@@ -107,25 +112,31 @@ void setup() {
   ServoWater.attach(kServoWaterPin);
   ServoUltrasonic.write(kServoUltrasonicForwardDegree);
   ServoWater.write(kServoWaterForwardDegree);
+
+  //water pump
+  pinMode(relayPin,OUTPUT);
+
 }
 
 /*
- * ultrasonic_sensor_measure measures the distance from the sensor.
+ * ultrasonic_sensor_measure: check the latest legal cmd data, if it is not back measure the distance from the sensor.
  * If the distance is less than 10cm then stop the car.
  */
 void ultrasonic_sensor_measure() {
-  digitalWrite(kTriggerPin, LOW);
-  delayMicroseconds(5);
-  digitalWrite(kTriggerPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(kTriggerPin, LOW);
-  duration = pulseIn(kEchoPin, HIGH);
-  cm = (duration / 2) / 29.1;
-  Serial.print(cm);
-  Serial.println("cm");
-  delay(100);
-  if (cm < 10) {
-    cmd_data = "S";
+  if(cmd_data != kCmdBack) {
+    digitalWrite(kTriggerPin, LOW);
+    delayMicroseconds(5);
+    digitalWrite(kTriggerPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(kTriggerPin, LOW);
+    duration = pulseIn(kEchoPin, HIGH);
+    cm = (duration / 2) / 29.1;
+    Serial.print(cm);
+    Serial.println("cm");
+    delay(100);
+    if (cm < 10) {
+      current_cmd_data = "S";
+    }
   }
 }
 
@@ -140,6 +151,18 @@ void buzzer_on() {
 }
 
 /*
+ * push water for 0.5 second and then stop it
+ */
+ void waterpomp_work() {
+  digitalWrite(relayPin,HIGH);
+delay(500);
+digitalWrite(relayPin,LOW);
+delay(1500);
+
+ }
+
+
+/*
  * measure the flmae sensor right value, if it less than kThresholdTemp then buzzer on and turn the pomp water servo to right.
  */
 void flame_sensor_right_measure() {
@@ -149,7 +172,7 @@ void flame_sensor_right_measure() {
     Serial.println(flameSensorValueRight);
     buzzer_on();
     ServoWater.write(kServoWaterRightDegree);
-   
+    waterpomp_work();
   }
 }
 
@@ -163,11 +186,8 @@ void flame_sensor_left_measure() {
     Serial.println(flameSensorValueLeft);
     buzzer_on();
     ServoWater.write(kServoWaterLeftDegree);
-    
+    waterpomp_work();
   }
-}
-
-void servo_test() {
 }
 
 void loop() {
@@ -176,20 +196,20 @@ void loop() {
   flame_sensor_right_measure();
   flame_sensor_left_measure();
 
-  servo_test();
   // enable the HM10 to listen
   HM10.listen();
   // check if available for each char
   if (HM10.available() > 0) {
     data_from_bluetooth = HM10.read();
-    cmd_data = String(data_from_bluetooth);
+    // current read cmd data, if it is legal, save it to cmd_data = current_cmd_data;
+    current_cmd_data = String(data_from_bluetooth);
     Serial.write(data_from_bluetooth);
   }
 
   // check to stop a car (obstacle..)
   ultrasonic_sensor_measure();
 
-  if (cmd_data == kCmdBack) {
+  if (current_cmd_data == kCmdBack) {
     digitalWrite(kLeftForward, LOW);
     digitalWrite(kLeftBackward, HIGH);
     digitalWrite(kRightForward, LOW);
@@ -200,9 +220,9 @@ void loop() {
     digitalWrite(kRightYellow, LOW);
     digitalWrite(kLeftGreen, LOW);
     digitalWrite(kFrontRed, LOW);
-  } else if (cmd_data == kCmdFront) {
+    cmd_data = current_cmd_data;
+  } else if (current_cmd_data == kCmdFront) {
     ServoUltrasonic.write(kServoUltrasonicForwardDegree);
-    delay(15);
     digitalWrite(kLeftForward, HIGH);
     digitalWrite(kLeftBackward, LOW);
     digitalWrite(kRightForward, HIGH);
@@ -213,9 +233,9 @@ void loop() {
     digitalWrite(kLeftGreen, LOW);
     digitalWrite(kBackWhite, LOW);
     digitalWrite(kFrontRed, HIGH);
-  } else if (cmd_data == kCmdLeft) {
+    cmd_data = current_cmd_data;
+  } else if (current_cmd_data == kCmdLeft) {
     ServoUltrasonic.write(kServoUltrasonicLeftDegree);
-    delay(15);
     digitalWrite(kLeftForward, HIGH);
     digitalWrite(kLeftBackward, LOW);
     digitalWrite(kRightForward, LOW);
@@ -226,9 +246,9 @@ void loop() {
     digitalWrite(kRightYellow, LOW);
     digitalWrite(kBackWhite, LOW);
     digitalWrite(kFrontRed, LOW);
-  } else if (cmd_data == kCmdRight) {
+    cmd_data = current_cmd_data;
+  } else if (current_cmd_data == kCmdRight) {
     ServoUltrasonic.write(kServoUltrasonicRightDegree);
-    delay(15);
     digitalWrite(kLeftForward, LOW);
     digitalWrite(kLeftBackward, LOW);
     digitalWrite(kRightForward, HIGH);
@@ -239,22 +259,22 @@ void loop() {
     digitalWrite(kLeftGreen, LOW);
     digitalWrite(kBackWhite, LOW);
     digitalWrite(kFrontRed, LOW);
-  } else if (cmd_data == kCmdStop) {
+    cmd_data = current_cmd_data;
+  } else if (current_cmd_data == kCmdStop) {
     ServoUltrasonic.write(kServoUltrasonicForwardDegree);
-    delay(15);
     digitalWrite(kLeftForward, LOW);
     digitalWrite(kLeftBackward, LOW);
     digitalWrite(kRightForward, LOW);
     digitalWrite(kRightBackward, LOW);
-    Serial.write("DEBUG: cmd is else - not B, L, R and F. Stop the Car!");
+    Serial.write("DEBUG: cmd is stop!");
     //leds
     digitalWrite(kLeftGreen, LOW);
     digitalWrite(kBackWhite, LOW);
     digitalWrite(kRightYellow, LOW);
     digitalWrite(kFrontRed, LOW);
-
+    cmd_data = current_cmd_data;
   } else {
-    Serial.write("DEBUG: Don't do anything!");
+    //Serial.write("DEBUG: Don't do anything!");
   }
 
   delay(100);
